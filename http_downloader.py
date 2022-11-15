@@ -1,8 +1,10 @@
 import argparse
 import threading
 import os
+import datetime
 import requests
-
+import time
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
 parser.add_argument('url',type=str)
@@ -14,6 +16,38 @@ url=args.url
 Count=args.Count
 goal_name=args.goal_name
 
+global read
+read=0
+global starttime
+starttime=0
+speed_list=[]
+time_list=[]
+
+
+class CalThread(threading.Thread):
+    def __init__(self,name,filelength):
+        super().__init__()
+        self.name=name
+        self.filelength=filelength
+        
+    def run(self):
+        st_time=time.time()
+        global read
+        while(True):
+            time.sleep(0.1)
+            now_count=0.0
+            now_time=time.time()
+            for i in range(0,Count):
+                tmp_name="{}_{}.tmp".format(self.name,i)
+                if(os.path.exists(tmp_name)==True):
+                    now_count+=os.path.getsize(tmp_name)
+          #  print(read/1024/1024/(now_time-st_time))
+           # print(read)
+            if(read!=0):
+                time_list.append(now_time)
+                speed_list.append(read/1024/1024/(now_time-st_time))
+            if(read==self.filelength):
+                break
 
 class PerThread(threading.Thread):
     #创建一个下载线程
@@ -25,25 +59,51 @@ class PerThread(threading.Thread):
         self.id=id
         self.name=name
     def run(self):
+        global read
         endpos=self.DownloadRanges[self.id][1]["endpos"]
         startpos=self.DownloadRanges[self.id][2]["stpos"]
+        global starttime
         tmp_name="{}_{}.tmp".format(self.name,self.id)
         #找到之前下载的位置
         if(os.path.exists(tmp_name)==True):
-            stpos=os.path.getsize(tmp_name)+1
+            stpos=os.path.getsize(tmp_name)+startpos
         else:
             stpos=startpos
-        range_now="{}-{}".format(stpos,endpos)
-        headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 Edg/92.0.902.84",
-                "Range": "bytes={}".format(range_now)
-        }
-        response=requests.get(self.url,headers=headers)
-        
-        #获取对应的编号的部分，以.tmp形式保存
-        with open("{}_{}.tmp".format(self.name,self.id),"wb") as f:
-            f.write(response.content)
-    
+        if(stpos<endpos):
+            range_now="{}-{}".format(stpos,endpos)
+           # print(range_now)
+            headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 Edg/92.0.902.84",
+                    "Range": "bytes={}".format(range_now)
+            }
+            response=requests.get(self.url,headers=headers)
+            chunk_size=1024
+            last_time=time.time()
+            
+            with open("{}_{}.tmp".format(self.name,self.id),"wb") as f:
+                for chunk in response.iter_content(chunk_size=1024):
+                    read+=len(chunk)
+                    f.write(chunk)
+               # print(chunk_size)
+               # print(datetime.datetime.now())   
+                """
+                    read+=len(chunk)
+                    now_time=time.time()
+                   # if(now_time-last_time>0.01):
+                    speed=chunk_size*1.0/1024/1024/(now_time-last_time)
+                    last_time=now_time
+                    speed_list.append(speed)
+                    time_list.append(now_time)
+                    #print("{:.4f}".format(speed))
+                """
+                    #f.write(chunk)
+                
+            #获取对应的编号的部分，以.tmp形式保存
+            """
+                with open("{}_{}.tmp".format(self.name,self.id),"wb") as f:
+                    f.write(response.content)
+            """
+            f.close()
 
 def GetFileLength(url):
     #获取对象的Length，以便之后的多部份downloader
@@ -74,9 +134,15 @@ def GetDownloadList(filelength,DownloadCount):
 
 
 #创建count个下载线程并行下载
-def MultiThreadDownload(DownloadRanges,DownloadCount):
+def MultiThreadDownload(DownloadRanges,DownloadCount,filelength):
     threads=[]
+    global read
     #用一个list保存线程
+    global starttime
+    starttime=time.time()#一开始的时间
+    cal=CalThread(getfilename(url),filelength)
+    cal.start()
+    threads.append(cal)
     for i in range(DownloadCount):
         now_thread=PerThread(DownloadRanges,url,i,getfilename(url))
         now_thread.start()
@@ -85,7 +151,7 @@ def MultiThreadDownload(DownloadRanges,DownloadCount):
         
     for thread in threads:
         thread.join()
-        
+     
 
 
 def getfilename(url):
@@ -115,19 +181,33 @@ def combinefile(url):
     originname=getfilename(url)
     with open(filename,"ab") as f:
         for i in range(Count):
+           # print(os.path.getsize("{}_{}.tmp".format(originname,i)))
             with open("{}_{}.tmp".format(originname,i),"rb") as partfile:
                 f.write(partfile.read())
 
+
+def pic():
+    #作速度图
+    st=time_list[0]
+ #  print(time_list)
+    for i in range(len(time_list)):
+        time_list[i]-=st
+    plt.plot(time_list,speed_list)
+    plt.title('Speed_pic',fontsize=14)
+    plt.xlabel(u'Time(s)',fontsize=14)
+    plt.ylabel(u'Speed(m/s)',fontsize=14)
+    plt.savefig("speed_pic.jpg")
+    plt.show()
 
 def download(url,Count,goal_name):
     # length=GetFileLength(url)
    filelength=GetFileLength(url)
    ranges=GetDownloadList(filelength,Count)
    #获取范围列表
-   MultiThreadDownload(ranges,Count)
+   MultiThreadDownload(ranges,Count,filelength)
    #多线程下载
    combinefile(url)
    #组合文件
+   pic()
 if __name__ == '__main__':
    download(url,Count,goal_name)
-   
