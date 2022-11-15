@@ -1,4 +1,4 @@
-# Range Downloader By Python
+# Range Downloader
 
 python实现基于HTTP "Range"请求的多线程下载器
 
@@ -15,3 +15,17 @@ python实现基于HTTP "Range"请求的多线程下载器
 编译为.exe文件，位置在dist文件夹中
 
 默认下载路径也在.exe所在文件夹中
+
+命令行输入格式
+####
+    python http_downloader.py {url} {goal_name} {thread_count}
+   
+如
+####
+    python http_downloader.py http://down.360safe.com/setup.exe 111.exe 5
+
+网速表保存在项目路径下
+####
+    speed_pic.jpg
+
+网速测量采用response.iter_content()的形式，若线程数较少会出现测量不准确的情况
